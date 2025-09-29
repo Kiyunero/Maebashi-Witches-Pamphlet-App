@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>【新】魔法のパンフレット</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="ad-screen">
+        <video id="ad-video" src="https://firebasestorage.googleapis.com/v0/b/pilgrimage-quest-app.firebasestorage.app/o/%E3%82%B5%E3%83%B3%E3%83%87%E3%83%B3RS%2F%E3%82%B5%E3%83%B3%E3%83%87%E3%83%B3%E7%B8%A5%E5%8B%95%E7%94%BB.mp4?alt=media&token=4d80a5ec-c14f-4219-ad24-3d13cabe9eab" autoplay loop playsinline></video>
+        <div class="touch-prompt">画面をタッチしてください</div>
+    </div>
+
+    <div id="main-content" class="hidden">
+        <div id="map"></div>
+        
+        <div id="app">
+            <div id="map-overlays">
+                <svg class="connector-svg">
+                    <line v-for="spot in spotsWithCoords" :key="'line-' + spot.id"
+                          :x1="spot.pin.x" :y1="spot.pin.y"
+                          :x2="spot.popup.x" :y2="spot.popup.y"
+                          class="connector-line" />
+                </svg>
+
+                <div v-for="spot in spotsWithCoords" :key="'popup-' + spot.id"
+                     class="custom-popup"
+                     :style="{ left: spot.popup.x + 'px', top: spot.popup.y + 'px' }">
+                    <img :src="spot.detail_image" class="popup-image" alt="">
+                    <div class="popup-content">
+                        <h6 class="popup-title">{{ spot.name }}</h6>
+                        <p class="popup-comment">{{ spot.comment }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="top-right-controls">
+                <button class="btn btn-info mb-2" @click="showAuthModal">★ スマホと連携</button>
+                <button class="btn btn-warning" @click="showPurchasePage">🎁 グッズ購入</button>
+                <div v-if="currentUser" class="user-info-box">
+                    連携中: {{ currentUser.userId.substring(0, 6) }}...<br>
+                    保有P: {{ currentUser.points || 0 }}
+                </div>
+            </div>
+
+            <transition name="slide">
+                <div v-if="isPurchasePageVisible" class="event-detail-overlay">
+                    <div class="event-detail-header">
+                        <h2 class="event-detail-spot-title">グッズ購入</h2>
+                        <div class="header-points-display">
+                            保有ポイント: {{ currentUser?.points || 0 }} P
+                        </div>
+                        <button @click="hidePurchasePage" class="back-to-map-btn">戻る</button>
+                    </div>
+                    <div class="event-detail-content">
+                        <div v-if="isPurchasing" class="text-center">
+                            <p>通信中...</p>
+                        </div>
+                        <div class="reward-grid" v-else>
+                            <div v-for="good in goods" :key="good.id" class="reward-item" 
+                                 :class="{ 'redeemable': canPurchase(good), 'insufficient': !canPurchase(good) }"
+                                 @click="purchaseWithPoints(good)">
+                                 <div class="reward-image-container">
+                                    <img :src="good.image" :alt="good.name" class="reward-image">
+                                 </div>
+                                <div class="reward-info">
+                                    <h5 class="reward-name">{{ good.name }}</h5>
+                                    <p class="reward-points">{{ good.requiredPoints }} P</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </transition>
+            
+            <transition name="fade">
+                <div v-if="isAuthModalVisible" class="custom-modal-overlay" @click="hideAuthModal">
+                    <div class="custom-modal-content auth-modal-content" @click.stop>
+                         <button class="custom-modal-close-btn" @click="hideAuthModal"></button>
+                        <h4 class="custom-modal-title">スマホと連携</h4>
+                        <p class="custom-modal-description">
+                            スマホアプリで発行された6桁の合言葉を入力してください。
+                        </p>
+                        <input type="text" class="form-control auth-modal-input" v-model="enteredAuthToken" maxlength="6">
+                        <div class="d-grid">
+                            <button class="btn btn-primary btn-lg" @click="loginWithAuthToken">連携する</button>
+                        </div>
+                    </div>
+                </div>
+            </transition>
+
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyACAVYO9bza32V-dYFaiRafHn8owtIw3eg&callback=initMap" defer></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore-compat.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
