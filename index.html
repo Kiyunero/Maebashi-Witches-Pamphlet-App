@@ -27,7 +27,9 @@
 
                 <div v-for="spot in spotsWithCoords" :key="'popup-' + spot.id"
                      class="custom-popup"
-                     :style="{ left: spot.popup.x + 'px', top: spot.popup.y + 'px' }">
+                     :style="{ left: spot.popup.x + 'px', top: spot.popup.y + 'px' }"
+                     @click="flyToSpot(spot)"
+                     :ref="(el) => { if (el) popupElements[spot.id] = el }">
                     <img :src="spot.detail_image" class="popup-image" alt="">
                     <div class="popup-content">
                         <h6 class="popup-title">{{ spot.name }}</h6>

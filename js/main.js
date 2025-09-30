@@ -29,6 +29,8 @@ function initMap() {
                 enteredAuthToken: '',
                 currentUser: null,
                 userListener: null,
+                // ★★★ 修正点①: ポップアップのDOM要素を保存する場所を追加 ★★★
+                popupElements: {},
             };
         },
         mounted() {
@@ -55,6 +57,37 @@ function initMap() {
             this.map.addListener('bounds_changed', () => {
                 this.updateOverlayPositions();
             });
+
+            // ★★★ 修正点②: Intersection Observerを設定 ★★★
+            // 要素が画面に入ったか/出たかを監視するオブザーバーを作成
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    // 画面内に入ってきたら is-visible クラスを追加
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('is-visible');
+                    } 
+                    // 画面外に出たら is-visible クラスを削除（再度入ってきた時にアニメーションさせるため）
+                    else {
+                        entry.target.classList.remove('is-visible');
+                    }
+                });
+            }, { 
+                root: document.querySelector('#app'), // 画面（#app）を基準に監視
+                threshold: 0.1 // 要素が10%見えたら反応
+            });
+
+            // 監視対象を全てのポップアップ要素にする
+            // spotsWithCoordsが更新されるたびに監視対象を更新する
+            this.$watch('spotsWithCoords', (newSpots) => {
+                this.$nextTick(() => {
+                    newSpots.forEach(spot => {
+                        const el = this.popupElements[spot.id];
+                        if (el) {
+                            observer.observe(el);
+                        }
+                    });
+                });
+            }, { deep: true });
         },
         methods: {
             async fetchDataFromFirestore() {
@@ -73,11 +106,9 @@ function initMap() {
 
             placeMarkers() {
                 this.spots.forEach(spot => {
-                    // ★★★ 改善点① ★★★
-                    // 緯度経度がnumber型でない場合、処理をスキップしてエラーを防ぐ
                     if (typeof spot.latitude !== 'number' || typeof spot.longitude !== 'number') {
                         console.warn(`座標データが不正なため、スポットをスキップしました: ${spot.name}`);
-                        return; // returnで現在のループを抜けて次に進む
+                        return;
                     }
 
                     const marker = new google.maps.Marker({
@@ -85,12 +116,14 @@ function initMap() {
                         map: this.map,
                         title: spot.name,
                         icon: {
-                            path: google.maps.SymbolPath.CIRCLE,
-                            scale: 8,
-                            fillColor: "#FF6347",
+                            path: 'M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z',
+                            fillColor: "#FFD700",
                             fillOpacity: 1,
-                            strokeWeight: 2,
-                            strokeColor: "#FFFFFF"
+                            strokeWeight: 1,
+                            strokeColor: "#FFFFFF",
+                            rotation: 0,
+                            scale: 1.5,
+                            anchor: new google.maps.Point(12, 12)
                         }
                     });
                     this.markers.push(marker);
@@ -111,10 +144,8 @@ function initMap() {
                 const scale = Math.pow(2, this.map.getZoom());
 
                 const newCoords = this.spots.map(spot => {
-                    // ★★★ 改善点② ★★★
-                    // こちらでも同様にデータチェックを行う
                     if (typeof spot.latitude !== 'number' || typeof spot.longitude !== 'number') {
-                        return null; // 不正なデータはnullとしてマーク
+                        return null;
                     }
 
                     const latLng = new google.maps.LatLng(spot.latitude, spot.longitude);
@@ -135,12 +166,15 @@ function initMap() {
                         popup: { x: popupX, y: popupY }
                     };
                 });
-
-                // ★★★ 改善点③ ★★★
-                // nullとしてマークしたものを配列から除外する
                 this.spotsWithCoords = newCoords.filter(spot => spot !== null);
             },
             
+            flyToSpot(spot) {
+                const targetLatLng = new google.maps.LatLng(spot.latitude, spot.longitude);
+                this.map.panTo(targetLatLng);
+                this.map.setZoom(18);
+            },
+
             showAuthModal() {
                 this.isAuthModalVisible = true;
                 this.enteredAuthToken = '';
@@ -150,12 +184,9 @@ function initMap() {
             },
             async loginWithAuthToken() {
                 if (this.enteredAuthToken.length !== 6) return alert("6桁の数字を入力してください。");
-
                 const tokenRef = db.collection('authTokens').doc(this.enteredAuthToken);
                 const tokenDoc = await tokenRef.get();
-
                 if (!tokenDoc.exists) return alert("合言葉が正しくありません。");
-                
                 const userId = tokenDoc.data().userId;
                 this.setupUserListener(userId);
                 await tokenRef.delete();
@@ -164,7 +195,6 @@ function initMap() {
             
             setupUserListener(userId) {
                 if (this.userListener) this.userListener();
-                
                 const userRef = db.collection('users').doc(userId);
                 this.userListener = userRef.onSnapshot(doc => {
                     if (doc.exists) {
@@ -181,23 +211,18 @@ function initMap() {
             async purchaseWithPoints(good) {
                 if (!this.canPurchase(good)) return alert("ポイントが不足しています。");
                 if (!confirm(`${good.name}を ${good.requiredPoints}P で購入しますか？`)) return;
-
                 this.isPurchasing = true;
                 const userRef = db.collection('users').doc(this.currentUser.userId);
-
                 try {
                     await db.runTransaction(async (transaction) => {
                         const userDoc = await transaction.get(userRef);
                         const currentPoints = userDoc.data().points || 0;
                         if (currentPoints < good.requiredPoints) throw "ポイント不足";
-                        
                         const newPoints = currentPoints - good.requiredPoints;
                         transaction.update(userRef, { points: newPoints });
                     });
-                    
                     alert(`🎉 ${good.name} を購入しました！`);
                     console.log(`商品ID: ${good.id} の排出を指示`);
-
                 } catch (error) {
                     alert("購入処理中にエラーが発生しました。");
                 } finally {
